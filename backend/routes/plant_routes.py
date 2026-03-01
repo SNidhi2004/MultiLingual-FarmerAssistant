@@ -7,8 +7,10 @@ from sessions.session_manager import (
     get_current_image,
     add_qa,
     switch_image,
-    get_recent_images
+    get_recent_images,
+    get_user_history      # ✅ new
 )
+
 from services.speech_to_text import speech_to_text
 from services.translator import translate_text
 from services.text_to_speech import text_to_speech
@@ -53,21 +55,11 @@ def analyze():
 @plant_bp.route("/ask", methods=["POST"])
 @jwt_required
 def ask():
-    """
-    Handles farmer questions via voice (preferred) or text (fallback).
-    Returns spoken audio in the user's selected language.
-    """
 
-    # -------------------------------------------------
-    # 1. Validate image context
-    # -------------------------------------------------
     image = get_current_image(request.user_id)
     if not image:
         return jsonify({"error": "No image analyzed yet"}), 400
 
-    # -------------------------------------------------
-    # 2. Get language
-    # -------------------------------------------------
     user_lang = request.form.get("language") or (
         request.json.get("language") if request.is_json else None
     )
@@ -75,57 +67,46 @@ def ask():
     if not user_lang:
         return jsonify({"error": "Language is required"}), 400
 
-    # -------------------------------------------------
-    # 3. Get question (VOICE first, TEXT fallback)
-    # -------------------------------------------------
-    question_text = None
+    question_en = None
+    question_user = None
 
-    # 🎙️ Voice input
+    # 🎙 Voice
     if "audio" in request.files:
         audio_bytes = request.files["audio"].read()
 
-        # Speech → Text (user language)
         spoken_text = speech_to_text(audio_bytes, user_lang)
+        question_user = spoken_text
+        question_en = translate_text(spoken_text, user_lang[:2], "en")
 
-        # Translate → English
-        question_text = translate_text(spoken_text, user_lang[:2], "en")
-
-    # ⌨️ Text fallback
+    # ⌨ Text
     elif request.is_json and "question" in request.json:
         raw_text = request.json["question"]
-
-        # Translate → English (in case text is not English)
-        question_text = translate_text(raw_text, user_lang[:2], "en")
+        question_user = raw_text
+        question_en = translate_text(raw_text, user_lang[:2], "en")
 
     else:
         return jsonify({"error": "Audio or text question is required"}), 400
 
-    # -------------------------------------------------
-    # 4. Gemma reasoning (ENGLISH ONLY)
-    # -------------------------------------------------
     answer_en = generate_answer(
         disease=image["disease"],
         confidence=image["confidence"],
         last_qa=image["qa_history"],
-        question=question_text
+        question=question_en
     )
 
-    # Store Q&A (English only, for safety)
-    add_qa(request.user_id, question_text, answer_en)
+    answer_user = translate_text(answer_en, "en", user_lang[:2])
 
-    # -------------------------------------------------
-    # 5. Translate answer back to user language
-    # -------------------------------------------------
-    final_text = translate_text(answer_en, "en", user_lang[:2])
+    add_qa(
+        request.user_id,
+        question_en=question_en,
+        answer_en=answer_en,
+        question_user=question_user,
+        answer_user=answer_user,
+        language=user_lang
+    )
 
-    # -------------------------------------------------
-    # 6. Text → Speech (user language)
-    # -------------------------------------------------
-    audio_response = text_to_speech(final_text, user_lang)
+    audio_response = text_to_speech(answer_user, user_lang)
 
-    # -------------------------------------------------
-    # 7. Return audio response
-    # -------------------------------------------------
     return (
         audio_response,
         200,
@@ -173,6 +154,34 @@ def recent_images():
             "thumbnail": img["thumbnail"],
             "disease": img["disease"],
             "confidence": img["confidence"]
+        })
+
+    return jsonify(response), 200
+
+
+@plant_bp.route("/history", methods=["GET"])
+@jwt_required
+def history():
+
+    images = get_user_history(request.user_id)
+
+    response = []
+
+    for img in images:
+        response.append({
+            "image_id": str(img["_id"]),
+            "image_url": img["image_url"],
+            "thumbnail": img["thumbnail"],
+            "disease": img["disease"],
+            "confidence": img["confidence"],
+            "qa_history": [
+                {
+                    "question": qa["question"],
+                    "answer": qa["answer"],
+                    "timestamp": qa["timestamp"]
+                }
+                for qa in img.get("qa_history", [])
+            ]
         })
 
     return jsonify(response), 200

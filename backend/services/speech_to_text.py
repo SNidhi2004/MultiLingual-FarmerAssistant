@@ -23,11 +23,14 @@ def speech_to_text(audio_bytes: bytes, language: str) -> str:
     speech_config.speech_recognition_language = language
 
     # Push audio stream (no file system usage)
-    audio_stream = speechsdk.audio.PushAudioInputStream()
-    audio_stream.write(audio_bytes)
-    audio_stream.close()
+    stream = speechsdk.audio.PushAudioInputStream()
+    audio_config = speechsdk.audio.AudioConfig(stream=stream)
 
-    audio_config = speechsdk.audio.AudioConfig(stream=audio_stream)
+    # Write audio bytes
+    stream.write(audio_bytes)
+    stream.close()
+
+    # audio_config = speechsdk.audio.AudioConfig(stream=audio_stream)
 
     recognizer = speechsdk.SpeechRecognizer(
         speech_config=speech_config,
