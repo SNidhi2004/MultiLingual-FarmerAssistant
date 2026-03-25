@@ -1,4 +1,4 @@
-from pymongo import MongoClient, ASCENDING
+from pymongo import MongoClient, ASCENDING, DESCENDING
 from config import MONGO_URI
 
 client = MongoClient(MONGO_URI)
@@ -12,28 +12,12 @@ users_col = db["users"]
 sessions_col = db["sessions"]
 images_col = db["images"]
 
-# -------------------------------
-# Indexes (IMPORTANT)
-# -------------------------------
+# Indexes (CORRECTED)
 
-# Users: unique usernames
-users_col.create_index(
-    [("username", ASCENDING)],
-    unique=True
-)
+users_col.create_index([("username", ASCENDING)],unique=True)
 
-# Sessions: lookup by user
-sessions_col.create_index(
-    [("user_id", ASCENDING)]
-)
-
-# Sessions: auto-expire after 6 hours
-sessions_col.create_index(
-    [("created_at", ASCENDING)],
-    expireAfterSeconds=6 * 60 * 60
-)
-
-# Images: lookup by session
-images_col.create_index(
-    [("session_id", ASCENDING)]
-)
+sessions_col.create_index([("user_id", ASCENDING)])
+sessions_col.create_index([("user_id", ASCENDING), ("created_at", DESCENDING)])
+images_col.create_index([("user_id", ASCENDING), ("created_at", DESCENDING)])
+images_col.create_index([("session_id", ASCENDING)])
+sessions_col.create_index([("user_id", ASCENDING), ("is_active", ASCENDING)])

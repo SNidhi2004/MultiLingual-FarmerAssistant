@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 from database import users_col
 from utils.jwt_utils import generate_token
 import bcrypt
@@ -6,12 +6,16 @@ from datetime import datetime
 
 auth_bp = Blueprint("auth", __name__)
 
+def _build_cors_preflight_response():
+    return make_response(), 200
 
 # ------------------------
 # REGISTER
 # ------------------------
 @auth_bp.route("/register", methods=["POST"])
 def register():
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
     data = request.json
 
     if not data:
@@ -52,6 +56,8 @@ def register():
 # ------------------------
 @auth_bp.route("/login", methods=["POST"])
 def login():
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
     data = request.json
 
     if not data:

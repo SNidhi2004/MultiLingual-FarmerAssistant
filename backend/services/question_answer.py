@@ -14,10 +14,10 @@ def build_prompt(
 
     history_block = ""
     for qa in last_qa:
-        history_block += (
-            f"Q: {qa['question']}\n"
-            f"A: {qa['answer']}\n"
-        )
+        q_text = qa.get("question_user") or qa.get("question", "")
+        a_text = qa.get("answer_user") or qa.get("answer", "")
+        history_block += f"Q: {q_text}\nA: {a_text}\n"
+        
 
     prompt = f"""
 You are an agricultural assistant for farmers.
@@ -56,20 +56,26 @@ def generate_answer(
     Generates a safe answer using Gemma:2B.
     """
 
-    prompt = build_prompt(
-        disease=disease,
-        confidence=confidence,
-        last_qa=last_qa,
-        question=question
-    )
-
-    response = query_gemma(prompt)
-
-    # Final guardrail (simple but effective)
-    if not response:
-        return (
-            "I’m unable to answer that right now. "
-            "Please consult an agriculture officer."
+    try:
+        prompt = build_prompt(
+            disease=disease,
+            confidence=confidence,
+            last_qa=last_qa,
+            question=question
         )
-
-    return response.strip()
+        
+        print(f"Prompt built, sending to Ollama...")
+        response = query_gemma(prompt)
+        
+        # Final guardrail
+        if not response:
+            return (
+                "I'm unable to answer that right now. "
+                "Please consult an agriculture officer."
+            )
+        
+        return response.strip()
+        
+    except Exception as e:
+        print(f"Error in generate_answer: {e}")
+        return "I'm having trouble answering right now. Please try again."

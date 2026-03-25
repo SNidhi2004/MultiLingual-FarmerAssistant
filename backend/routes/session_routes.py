@@ -1,44 +1,72 @@
-from flask import Blueprint, jsonify
-from utils.jwt_utils import jwt_required
-from flask import request
-
+from flask import Blueprint, request, jsonify, make_response
+from utils.jwt_utils import decode_token
 from sessions.session_manager import (
     get_active_session,
-    create_or_get_session,
+    create_new_session,
     reset_session
 )
 
 session_bp = Blueprint("session", __name__, url_prefix="/session")
 
+# Simple OPTIONS handler
+def _build_cors_preflight_response():
+    return make_response(), 200
 
 # -------------------------------------------------
-# START / GET SESSION
+# START SESSION
 # -------------------------------------------------
-@session_bp.route("/start", methods=["POST"])
-@jwt_required
+@session_bp.route("/start", methods=["POST", "OPTIONS"])
 def start_session():
-    """
-    Returns the active session for the user.
-    If none exists, creates one.    
-    """
-    session_id = create_or_get_session(request.user_id)
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
+    
+    # Verify JWT manually
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return jsonify({"error": "Authorization header missing"}), 401
+    
+    token = auth_header.split(" ")[1]
+    payload = decode_token(token)
+    
+    if not payload:
+        return jsonify({"error": "Invalid or expired token"}), 401
+    
+    user_id = payload.get("user_id")
+    
+    # Check if active session exists
+    active_session = get_active_session(user_id)
+    
+    if active_session:
+        session_id = active_session.get("session_id")
+    else:
+        # Create new session
+        _, session_id = create_new_session(user_id)
 
-    return jsonify({
-        "session_id": str(session_id)
-    }), 200
+    return jsonify({"session_id": session_id}), 200
 
 
 # -------------------------------------------------
-# RESET SESSION (CLEAR IMAGES & CONTEXT)
+# RESET SESSION
 # -------------------------------------------------
-@session_bp.route("/reset", methods=["POST"])
-@jwt_required
+@session_bp.route("/reset", methods=["POST", "OPTIONS"])
 def reset_user_session():
-    """
-    Ends current session and deletes all related images.
-    A new session will be created automatically on next image upload.
-    """
-    success = reset_session(request.user_id)
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
+    
+    # Verify JWT manually
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return jsonify({"error": "Authorization header missing"}), 401
+    
+    token = auth_header.split(" ")[1]
+    payload = decode_token(token)
+    
+    if not payload:
+        return jsonify({"error": "Invalid or expired token"}), 401
+    
+    user_id = payload.get("user_id")
+    
+    success = reset_session(user_id)
 
     if not success:
         return jsonify({"message": "No active session to reset"}), 200

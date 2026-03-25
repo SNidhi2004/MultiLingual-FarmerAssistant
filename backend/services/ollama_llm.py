@@ -20,20 +20,29 @@ def query_gemma(prompt: str) -> str:
         "stream": False
     }
 
-    response = requests.post(
-        f"{OLLAMA_URL}/api/generate",
-        json=payload,
-        timeout=60
-    )
-
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"Ollama error: {response.status_code} {response.text}"
+    try:
+        print(f"Calling Ollama at {OLLAMA_URL}/api/generate")
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json=payload,
+            timeout=60
         )
-
-    data = response.json()
-
-    if "response" not in data:
-        raise RuntimeError("Invalid response from Ollama")
-
-    return data["response"].strip()
+        
+        if response.status_code != 200:
+            print(f"Ollama error: {response.status_code} {response.text}")
+            raise RuntimeError(f"Ollama error: {response.status_code}")
+        
+        data = response.json()
+        
+        if "response" not in data:
+            print("Invalid response from Ollama")
+            raise RuntimeError("Invalid response from Ollama")
+        
+        return data["response"].strip()
+        
+    except requests.exceptions.ConnectionError:
+        print("Cannot connect to Ollama. Is it running?")
+        return "I'm having trouble connecting to my knowledge base. Please try again later."
+    except Exception as e:
+        print(f"Ollama error: {e}")
+        return "I'm having trouble answering right now. Please try again."

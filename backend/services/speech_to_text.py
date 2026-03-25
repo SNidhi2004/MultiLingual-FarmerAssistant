@@ -15,6 +15,11 @@ def speech_to_text(audio_bytes: bytes, language: str) -> str:
     if not AZURE_SPEECH_KEY or not AZURE_SPEECH_REGION:
         raise RuntimeError("Azure Speech credentials not configured")
 
+    debug_path = "debug_audio.wav"
+    with open(debug_path, "wb") as f:
+        f.write(audio_bytes)
+    print(f"💾 Audio saved to {debug_path}")
+    
     # Azure speech configuration
     speech_config = speechsdk.SpeechConfig(
         subscription=AZURE_SPEECH_KEY,

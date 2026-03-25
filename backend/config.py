@@ -8,6 +8,8 @@ MONGO_URI = os.getenv("MONGO_URI")
 
 # JWT
 JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    JWT_SECRET = "dev-secret-key-change-in-production" 
 
 # Azure Speech
 AZURE_SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
