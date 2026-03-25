@@ -1,172 +1,381 @@
-import { useEffect, useState } from "react";
-import api from "../api/api";
-import AudioRecorder from "../components/AudioRecorder";
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '../contexts/LanguageContext';
+import { useHistory } from '../hooks/useHistory';
+import CameraCapture from '../components/camera/CameraCapture';
+import ImagePreview from '../components/camera/ImagePreview';
+import HistoryGrid from '../components/History/HistoryGrid';
+import ChatInterface from '../components/chat/ChatInterface';
+import LanguageSelector from '../components/common/LanguageSelector';
+import { LogOut, Sprout, ChevronLeft } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import ImageUpload from '../components/camera/ImageUpload';
+import api from '../api/axios';
+import toast from 'react-hot-toast';
+const Dashboard = () => {
+  const { logout } = useAuth();
+  const { language } = useLanguage();
+  const navigate = useNavigate();
+  const { resumeSession } = useHistory();
 
-export default function Dashboard({
-  imageFile,
-  setImageId,
-  setDisease,
-  setConfidence,
-  setLoadingAnalyze,
-  imageId,
-  disease,
-  confidence
-}) {
+  const [showCamera, setShowCamera] = useState(false);
+  const [showUpload, setShowUpload] = useState(false); 
 
-  const [language, setLanguage] = useState("en-IN");
-  const [question, setQuestion] = useState("");
-  const [loadingAsk, setLoadingAsk] = useState(false);
-  const [history, setHistory] = useState([]);
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [activeSession, setActiveSession] = useState(null);
+  const [view, setView] = useState('main'); // main, chat, history-chat
 
-  /* -----------------------------
-     Analyze image automatically
-  ------------------------------*/
-  useEffect(() => {
-    if (!imageFile) return;
-    analyzeImage();
-    // eslint-disable-next-line
-  }, [imageFile]);
+  const handleCapture = async (imageBlob) => {
+    setCapturedImage(imageBlob);
+    setLoading(true);
+    setError(null);
 
-  const analyzeImage = async () => {
-    try {
-      setLoadingAnalyze(true);
-
-      const formData = new FormData();
-      formData.append("image", imageFile);
-      formData.append("language", language);
-
-      const res = await api.post("/plant/analyze", formData);
-
-      setImageId(res.data.image_id);
-      setDisease(res.data.disease);
-      setConfidence(res.data.confidence);
-
-    } catch (e) {
-      alert("Failed to analyze image");
-      return;
-    } finally {
-      setLoadingAnalyze(false);
-    }
-
-    // load history should NOT break analyze flow
-    try {
-      await loadHistory();
-    } catch (e) {
-      console.error("History failed to load after analyze");
-    }
-  };
-
-  /* -----------------------------
-     Ask by text
-  ------------------------------*/
-  const askByText = async () => {
-    if (!question.trim()) return;
+    const formData = new FormData();
+    formData.append('image', imageBlob, 'plant.jpg');
+    formData.append('language', language);
 
     try {
-      setLoadingAsk(true);
-
-      await api.post(
-        "/plant/ask",
-        {
-          question,
-          language
+      const response = await api.post('/plant/analyze', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
         },
-        {
-          headers: {
-            "Content-Type": "application/json"
-          },
-          responseType: "blob"
-        }
-      );
+      });
 
-      setQuestion("");
-
-    } catch (e) {
-      alert("Failed to ask question");
-      return;
+      setAnalysis(response.data);
+      setActiveSession({
+        sessionId: response.data.session_id,
+        imageId: response.data.image_id,
+        disease: response.data.disease,
+        confidence: response.data.confidence,
+        imageUrl: response.data.image_url
+      });
+      setView('chat');
+      setShowCamera(false);
+      setShowUpload(false); 
+      
+      toast.success('Image analyzed successfully!');
+    } catch (error) {
+      setError('Failed to analyze image. Please try again.');
+      console.error('Analysis error:', error);
     } finally {
-      setLoadingAsk(false);
+      setLoading(false);
     }
+  };
 
-    // history must not break asking
+  const handleHistorySelect = async (historyItem) => {
+    setLoading(true);
     try {
-      await loadHistory();
-    } catch (e) {
-      console.error("History failed to load after ask");
+      const session = await resumeSession(historyItem.session_id);
+      const qaHistory = session?.current_image?.qa_history || [];
+      console.log('QA History length:', qaHistory.length);
+      setActiveSession({
+        sessionId: historyItem.session_id,
+        imageId: historyItem.image_id,
+        disease: historyItem.disease,
+        confidence: historyItem.confidence,
+        imageUrl: historyItem.image_url,
+        qaHistory: qaHistory 
+      });
+      setView('history-chat');
+    } catch (error) {
+      toast.error('Failed to load session');
+    } finally {
+      setLoading(false);
     }
   };
 
-  /* -----------------------------
-     Load backend history
-  ------------------------------*/
-  const loadHistory = async () => {
-    const res = await api.get("/plant/history");
-    setHistory(res.data);
+  const handleNewScan = () => {
+    setShowUpload(true);
+    setShowCamera(true);
+    setCapturedImage(null);
+    setAnalysis(null);
+    setError(null);
   };
 
-  const currentImageHistory =
-    history.find((h) => h.image_id === imageId)?.qa_history || [];
+  const handleBack = () => {
+    setView('main');
+    setActiveSession(null);
+    setShowCamera(false);
+    setCapturedImage(null);
+  };
 
-  /* -----------------------------
-     UI
-  ------------------------------*/
+  const handleCameraOption = () => {
+    setShowUpload(false);
+    setShowCamera(true);
+  };
+
+  const handleGalleryOption = (file) => {
+    setShowUpload(false);
+    handleCapture(file); // ✅ Directly use the file from gallery
+  };
+
   return (
-    <div className="dash-right">
-
-      {/* Language */}
-      <div className="lang-row">
-        <span>Language</span>
-        <select
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-        >
-          <option value="en-IN">English</option>
-          <option value="te-IN">తెలుగు</option>
-          <option value="hi-IN">हिन्दी</option>
-        </select>
-      </div>
-
-      {imageId && (
-        <div className="ask-card">
-
-          <textarea
-            placeholder="Ask your question…"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-          />
-
-          <div className="ask-actions">
-            <button onClick={askByText} disabled={loadingAsk}>
-              {loadingAsk ? "Asking..." : "Send"}
-            </button>
-
-            <AudioRecorder
-              language={language}
-            />
+    <div className="min-h-screen bg-cream">
+      {/* Header */}
+      <header className="bg-white shadow-sm sticky top-0 z-10">
+        <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            {view !== 'main' && (
+              <button
+                onClick={handleBack}
+                className="p-2 hover:bg-gray-100 rounded-full transition"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            )}
+            <div className="flex items-center space-x-2">
+              <Sprout className="w-6 h-6 text-primary-500" />
+              <h1 className="text-xl font-bold text-gray-800">Farmer Assistant</h1>
+            </div>
           </div>
-
+          <div className="flex items-center space-x-3">
+            <LanguageSelector />
+            <button
+              onClick={logout}
+              className="p-2 hover:bg-gray-100 rounded-full transition"
+              title="Logout"
+            >
+              <LogOut className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
         </div>
-      )}
+      </header>
 
-      {imageId && (
-        <div className="qa-list">
+      {/* Main Content */}
+      <main className="max-w-md mx-auto px-4 py-6">
+        <AnimatePresence mode="wait">
+          {view === 'main' && (
+            <motion.div
+              key="main"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="space-y-6"
+            >
+              {/* New Scan Button */}
+              <button
+                onClick={handleNewScan}
+                className="w-full btn-primary flex items-center justify-center space-x-2"
+              >
+                <span>+</span>
+                <span>Scan New Plant</span>
+              </button>
 
-          <h4>Last questions for this image</h4>
-
-          {currentImageHistory.length === 0 && (
-            <div className="muted">No questions yet</div>
+              {/* History Grid */}
+              <HistoryGrid onSelectImage={handleHistorySelect} />
+            </motion.div>
           )}
 
-          {currentImageHistory.map((qa, i) => (
-            <div className="qa-card" key={i}>
-              <div className="qa-q">{qa.question}</div>
-              <div className="qa-a">{qa.answer}</div>
-            </div>
-          ))}
+          {/* Upload Options Modal */}
+          {showUpload && (
+            <motion.div
+              key="upload"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+            >
+              <ImageUpload
+                onCameraSelect={handleCameraOption}
+                onGallerySelect={handleGalleryOption}
+                onClose={() => setShowUpload(false)}
+              />
+            </motion.div>
+          )}
 
-        </div>
-      )}
+          {/* Camera Capture */}
+          {showCamera && (
+            <motion.div
+              key="camera"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+            >
+              <CameraCapture
+                onCapture={handleCapture}
+                onClose={() => {
+                  setShowCamera(false);
+                  setShowUpload(true); // Go back to upload options
+                }}
+              />
+            </motion.div>
+          )}
 
+          {view === 'chat' && activeSession && (
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="space-y-4"
+            >
+              {capturedImage && (
+                <ImagePreview
+                  image={capturedImage}
+                  disease={activeSession.disease}
+                  confidence={activeSession.confidence}
+                  loading={loading}
+                  error={error}
+                  onRetry={() => {
+                    setView('main');
+                    setShowUpload(true);
+                  }}
+                />
+              )}
+
+              <ChatInterface
+                sessionId={activeSession.sessionId}
+                disease={activeSession.disease}
+                confidence={activeSession.confidence}
+                initialQA={activeSession.qaHistory}
+              />
+            </motion.div>
+          )}
+
+          {view === 'history-chat' && activeSession && (
+            <motion.div
+              key="history-chat"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+            >
+              <ChatInterface
+                sessionId={activeSession.sessionId}
+                disease={activeSession.disease}
+                confidence={activeSession.confidence}
+                initialQA={activeSession.qaHistory}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
     </div>
   );
-}
+};
+
+export default Dashboard;
+
+//   return (
+//     <div className="min-h-screen bg-cream">
+//       {/* Header */}
+//       <header className="bg-white shadow-sm sticky top-0 z-10">
+//         <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
+//           <div className="flex items-center space-x-2">
+//             {view !== 'main' && (
+//               <button
+//                 onClick={handleBack}
+//                 className="p-2 hover:bg-gray-100 rounded-full transition"
+//               >
+//                 <ChevronLeft className="w-5 h-5" />
+//               </button>
+//             )}
+//             <div className="flex items-center space-x-2">
+//               <Sprout className="w-6 h-6 text-primary-500" />
+//               <h1 className="text-xl font-bold text-gray-800">Farmer Assistant</h1>
+//             </div>
+//           </div>
+//           <div className="flex items-center space-x-3">
+//             <LanguageSelector />
+//             <button
+//               onClick={logout}
+//               className="p-2 hover:bg-gray-100 rounded-full transition"
+//               title="Logout"
+//             >
+//               <LogOut className="w-5 h-5 text-gray-600" />
+//             </button>
+//           </div>
+//         </div>
+//       </header>
+
+//       {/* Main Content */}
+//       <main className="max-w-md mx-auto px-4 py-6">
+//         <AnimatePresence mode="wait">
+//           {view === 'main' && (
+//             <motion.div
+//               key="main"
+//               initial={{ opacity: 0, x: -20 }}
+//               animate={{ opacity: 1, x: 0 }}
+//               exit={{ opacity: 0, x: 20 }}
+//               className="space-y-6"
+//             >
+//               {/* New Scan Button */}
+//               <button
+//                 onClick={handleNewScan}
+//                 className="w-full btn-primary flex items-center justify-center space-x-2"
+//               >
+//                 <span>+</span>
+//                 <span>Scan New Plant</span>
+//               </button>
+
+//               {/* History Grid */}
+//               <HistoryGrid onSelectImage={handleHistorySelect} />
+//             </motion.div>
+//           )}
+
+//           {showCamera && (
+//             <motion.div
+//               key="camera"
+//               initial={{ opacity: 0, scale: 0.9 }}
+//               animate={{ opacity: 1, scale: 1 }}
+//               exit={{ opacity: 0, scale: 0.9 }}
+//             >
+//               <CameraCapture
+//                 onCapture={handleCapture}
+//                 onClose={() => setShowCamera(false)}
+//               />
+//             </motion.div>
+//           )}
+
+//           {view === 'chat' && activeSession && (
+//             <motion.div
+//               key="chat"
+//               initial={{ opacity: 0, y: 20 }}
+//               animate={{ opacity: 1, y: 0 }}
+//               exit={{ opacity: 0, y: 20 }}
+//               className="space-y-4"
+//             >
+//               {capturedImage && (
+//                 <ImagePreview
+//                   image={capturedImage}
+//                   disease={activeSession.disease}
+//                   confidence={activeSession.confidence}
+//                   loading={loading}
+//                   error={error}
+//                   onRetry={() => setShowCamera(true)}
+//                 />
+//               )}
+
+//               <ChatInterface
+//                 sessionId={activeSession.sessionId}
+//                 disease={activeSession.disease}
+//                 confidence={activeSession.confidence}
+//                 initialQA={[]}
+//               />
+//             </motion.div>
+//           )}
+
+//           {view === 'history-chat' && activeSession && (
+//             <motion.div
+//               key="history-chat"
+//               initial={{ opacity: 0, y: 20 }}
+//               animate={{ opacity: 1, y: 0 }}
+//               exit={{ opacity: 0, y: 20 }}
+//             >
+//               <ChatInterface
+//                 sessionId={activeSession.sessionId}
+//                 disease={activeSession.disease}
+//                 confidence={activeSession.confidence}
+//                 initialQA={activeSession.qaHistory}
+//               />
+//             </motion.div>
+//           )}
+//         </AnimatePresence>
+//       </main>
+//     </div>
+//   );
+// };
+
+// export default Dashboard;
