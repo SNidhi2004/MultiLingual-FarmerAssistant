@@ -68,8 +68,8 @@ def get_session_by_id(session_id):
     return sessions_col.find_one({"session_id": session_id})
 
 
-def resume_session(user_id, session_id):
-    """Resume an archived session"""
+def resume_session(user_id, session_id, target_image_id=None):
+    """Resume an archived session and optionally set a specific active image"""
     # Find the session
     try:
         # Find the session by its string UUID
@@ -86,15 +86,24 @@ def resume_session(user_id, session_id):
         archive_active_session(user_id)
         
         # Set this session as active
+        update_fields = {
+            "is_active": True,
+            "is_archived": False,
+            "last_active": datetime.utcnow()
+        }
+        
+        if target_image_id:
+            try:
+                target_image = images_col.find_one({"_id": ObjectId(target_image_id), "user_id": ObjectId(user_id)})
+                if target_image:
+                    update_fields["current_image_id"] = target_image["_id"]
+                    session["current_image_id"] = target_image["_id"]
+            except Exception as e:
+                print(f"Error finding target image: {e}")
+
         sessions_col.update_one(
             {"_id": session["_id"]},
-            {
-                "$set": {
-                    "is_active": True,
-                    "is_archived": False,
-                    "last_active": datetime.utcnow()
-                }
-            }
+            {"$set": update_fields}
         )
         
         # Get the current image with its full QA history

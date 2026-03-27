@@ -16,6 +16,16 @@ def build_prompt(
     for qa in last_qa:
         q_text = qa.get("question_user") or qa.get("question", "")
         a_text = qa.get("answer_user") or qa.get("answer", "")
+        
+        # Filter out refusals so the LLM doesn't latch onto them
+        lower_a = a_text.lower()
+        refusal_keywords = [
+            "unable to answer", "cannot answer", "can't answer", 
+            "consult", "refuse", "unrelated"
+        ]
+        if any(keyword in lower_a for keyword in refusal_keywords):
+            continue
+            
         history_block += f"Q: {q_text}\nA: {a_text}\n"
         
 
@@ -24,11 +34,12 @@ You are an agricultural assistant for farmers.
 
 STRICT RULES:
 - Answer ONLY about the detected disease.
-- If the question is unrelated, politely refuse.
+- If the question is unrelated, politely refuse by saying "I cannot answer this question".
 - Be concise and practical.
 - Do NOT invent new diseases or facts.
 - Remove the '*' symbols when giving the answer.
-- Evertime make it farmer friendly and use simple language. Try not avoid technical terms.
+- Every time make it farmer friendly and use simple language. Try to avoid technical terms.
+- Base your answer ONLY on the current question. Ignore any past refusals.
 
 CONTEXT:
 Detected Disease: {disease}

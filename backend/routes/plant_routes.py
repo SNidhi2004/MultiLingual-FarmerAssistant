@@ -350,7 +350,8 @@ def analyze():
         return jsonify({
             "image_id": str(image_id),
             "disease": result["disease"],
-            "confidence": result["confidence"]
+            "confidence": result["confidence"],
+            "suggestions": result.get("suggestions", [])
         }), 200
         
     except Exception as e:
@@ -406,7 +407,10 @@ def ask():
                 #     f.write(audio_bytes)
                 spoken_text = speech_to_text(audio_bytes, user_lang)
                 question_user = spoken_text
-                question_en = translate_text(spoken_text, user_lang[:2], "en")
+                if user_lang[:2].lower() == "en":
+                    question_en = spoken_text
+                else:
+                    question_en = translate_text(spoken_text, user_lang[:2], "en")
             except Exception as e:
                 return jsonify({"error": f"Speech recognition failed: {str(e)}"}), 400
         else:
@@ -414,8 +418,12 @@ def ask():
                 return jsonify({"error": "Question is required"}), 400
             question_user = question_text
             try:
-                question_en = translate_text(question_text, user_lang[:2], "en")
-            except:
+                if user_lang[:2].lower() == "en":
+                    question_en = question_text
+                else:
+                    question_en = translate_text(question_text, user_lang[:2], "en")
+            except Exception as e:
+                print(f"DEBUG: Question Translation Error: {e}")
                 question_en = question_text
         
         last_qa = image.get("qa_history", [])
@@ -435,8 +443,12 @@ def ask():
 
         # Translate answer
         try:
-            answer_user = translate_text(answer_en, "en", user_lang[:2])
-        except:
+            if user_lang[:2].lower() == "en":
+                answer_user = answer_en
+            else:
+                answer_user = translate_text(answer_en, "en", user_lang[:2])
+        except Exception as e:
+            print(f"Answer Translation failed: {e}")
             answer_user = answer_en
 
         # Save to history
@@ -601,7 +613,12 @@ def resume_session(session_id):
         
         from sessions.session_manager import resume_session as resume_session_func
         
-        session = resume_session_func(user_id, session_id)
+        target_image_id = None
+        if request.is_json:
+            data = request.json
+            target_image_id = data.get("image_id")
+            
+        session = resume_session_func(user_id, session_id, target_image_id=target_image_id)
         if not session:
             return jsonify({"error": "Session not found"}), 404
         

@@ -1,8 +1,6 @@
-import azure.cognitiveservices.speech as speechsdk
+import requests
 from config import AZURE_SPEECH_KEY, AZURE_SPEECH_REGION
 
-
-# Optional: language → voice mapping
 VOICE_MAP = {
     "en-IN": "en-IN-NeerjaNeural",
     "hi-IN": "hi-IN-SwaraNeural",
@@ -12,49 +10,36 @@ VOICE_MAP = {
     "ml-IN": "ml-IN-SobhanaNeural"
 }
 
-
 def text_to_speech(text: str, language: str) -> bytes:
-    """
-    Converts text into spoken audio using Azure Text-to-Speech.
-    Returns WAV audio bytes (in-memory).
-    """
-
     if not AZURE_SPEECH_KEY or not AZURE_SPEECH_REGION:
         raise RuntimeError("Azure Speech credentials not configured")
+    
+    print(f"🔊 TTS REST API called with language: '{language}'")
+    
+    voice_name = VOICE_MAP.get(language, "hi-IN-SwaraNeural")
+    
+    url = f"https://{AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1"
+    
+    headers = {
+        "Ocp-Apim-Subscription-Key": AZURE_SPEECH_KEY,
+        "Content-Type": "application/ssml+xml",
+        "X-Microsoft-OutputFormat": "riff-16khz-16bit-mono-pcm",
+        "User-Agent": "FarmerAssistant"
+    }
+    
+    # Properly escape XML special characters
+    from xml.sax.saxutils import escape
+    safe_text = escape(text)
+    
+    ssml = f"""<speak version='1.0' xml:lang='{language}'>
+    <voice xml:lang='{language}' xml:gender='Female' name='{voice_name}'>
+        {safe_text}
+    </voice>
+</speak>"""
 
-    speech_config = speechsdk.SpeechConfig(
-        subscription=AZURE_SPEECH_KEY,
-        region=AZURE_SPEECH_REGION
-    )
-
-    # Set language
-    speech_config.speech_synthesis_language = language
-
-    # Set voice if available
-    if language in VOICE_MAP:
-        speech_config.speech_synthesis_voice_name = VOICE_MAP[language]
-
-    # Set WAV output format
-    speech_config.set_speech_synthesis_output_format(
-        speechsdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm
-    )
-
-    # 🔥 CRITICAL FIX:
-    # audio_config MUST be None for backend APIs
-    synthesizer = speechsdk.SpeechSynthesizer(
-        speech_config=speech_config,
-        audio_config=None
-    )
-
-    result = synthesizer.speak_text_async(text).get()
-
-    if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-        return result.audio_data
-
-    if result.reason == speechsdk.ResultReason.Canceled:
-        details = speechsdk.CancellationDetails(result)
-        raise RuntimeError(
-            f"TTS canceled: {details.reason} | {details.error_details}"
-        )
-
-    raise RuntimeError("Text-to-Speech failed unexpectedly")
+    response = requests.post(url, headers=headers, data=ssml.encode('utf-8'), timeout=15)
+    
+    if response.status_code == 200:
+        return response.content
+    else:
+        raise RuntimeError(f"TTS REST Error {response.status_code}: {response.text}")

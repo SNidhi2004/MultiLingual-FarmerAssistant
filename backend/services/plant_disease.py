@@ -419,7 +419,7 @@ class PlantDiseaseDetector:
                             elif isinstance(data, dict):
                                 class_names = data.get('diseases', data.get('classes', []))
                     
-                    model = tf.keras.models.load_model(model_path)
+                    model = tf.keras.models.load_model(model_path, compile=False)
                     
                     self.cnn_models.append({
                         'name': model_name,
@@ -508,6 +508,45 @@ class PlantDiseaseDetector:
             import traceback
             traceback.print_exc()
             return None
+
+    def preprocess_cnn_image(self, image_bytes, target_size=(224, 224)):
+        """Preprocess image for CNN models"""
+        try:
+            image = Image.open(io.BytesIO(image_bytes))
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            image = image.resize(target_size)
+            img_array = np.array(image).astype(np.float32) / 255.0
+            img_array = np.expand_dims(img_array, axis=0)
+            return img_array
+        except Exception as e:
+            print(f"❌ CNN preprocessing error: {e}")
+            return None
+    
+    def predict_with_cnn(self, model_info, img_array):
+        """Run prediction with CNN model"""
+        try:
+            print(f"🔍 Running CNN prediction with {model_info['name']}")
+            predictions = model_info['model'].predict(img_array, verbose=0)
+            confidence = float(np.max(predictions[0]))
+            class_idx = int(np.argmax(predictions[0]))
+            
+            if model_info['class_names'] and class_idx < len(model_info['class_names']):
+                disease_name = model_info['class_names'][class_idx]
+            else:
+                disease_name = f"Disease_{class_idx}"
+                
+            print(f"   ✅ Prediction: {disease_name} ({confidence:.2%})")
+            
+            return {
+                "disease": disease_name,
+                "confidence": confidence,
+                "type": "cnn",
+                "model_name": model_info['name']
+            }
+        except Exception as e:
+            print(f"❌ CNN prediction error: {e}")
+            return None
     
     def predict(self, image_bytes):
         """Run prediction with all models and return best result"""
@@ -539,7 +578,14 @@ class PlantDiseaseDetector:
             # CNN predictions (if any)
             if self.cnn_models:
                 print("\nRunning CNN predictions...")
-                # Add CNN prediction code here if needed
+                cnn_img_array = self.preprocess_cnn_image(image_bytes, self.input_size)
+                if cnn_img_array is not None:
+                    for model_info in self.cnn_models:
+                        result = self.predict_with_cnn(model_info, cnn_img_array)
+                        if result:
+                            results.append(result)
+                else:
+                    print("❌ CNN preprocessing failed")
             
             if not results:
                 print("\n❌ No results from any model! Using placeholder.")
@@ -587,4 +633,4 @@ def get_model_status():
         "yolo_models": [m['name'] for m in detector.yolo_models],
         "cnn_models": [m['name'] for m in detector.cnn_models],
         "total_models": len(detector.yolo_models) + len(detector.cnn_models)
-    }
+    }
