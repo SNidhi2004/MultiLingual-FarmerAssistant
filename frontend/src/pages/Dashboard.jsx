@@ -20,7 +20,7 @@ const Dashboard = () => {
   const { resumeSession } = useHistory();
 
   const [showCamera, setShowCamera] = useState(false);
-  const [showUpload, setShowUpload] = useState(false); 
+  const [showUpload, setShowUpload] = useState(false);
 
   const [capturedImage, setCapturedImage] = useState(null);
   const [analysis, setAnalysis] = useState(null);
@@ -55,8 +55,8 @@ const Dashboard = () => {
       });
       setView('chat');
       setShowCamera(false);
-      setShowUpload(false); 
-      
+      setShowUpload(false);
+
       toast.success('Image analyzed successfully!');
     } catch (error) {
       setError('Failed to analyze image. Please try again.');
@@ -69,7 +69,7 @@ const Dashboard = () => {
   const handleHistorySelect = async (historyItem) => {
     setLoading(true);
     try {
-      const session = await resumeSession(historyItem.session_id);
+      const session = await resumeSession(historyItem.session_id, historyItem.image_id);
       const qaHistory = session?.current_image?.qa_history || [];
       console.log('QA History length:', qaHistory.length);
       setActiveSession({
@@ -78,7 +78,7 @@ const Dashboard = () => {
         disease: historyItem.disease,
         confidence: historyItem.confidence,
         imageUrl: historyItem.image_url,
-        qaHistory: qaHistory 
+        qaHistory: qaHistory
       });
       setView('history-chat');
     } catch (error) {
@@ -147,8 +147,8 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <main className="max-w-md mx-auto px-4 py-6">
-        <AnimatePresence mode="wait">
-          {view === 'main' && (
+        <AnimatePresence>
+          {view === 'main' && !showUpload && !showCamera && (
             <motion.div
               key="main"
               initial={{ opacity: 0, x: -20 }}

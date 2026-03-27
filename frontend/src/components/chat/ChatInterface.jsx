@@ -11,7 +11,7 @@ const ChatInterface = ({ sessionId, disease, confidence, initialQA = [] }) => {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
-  const  language  = "en-IN";
+  const { language } = useLanguage();
   
   // ✅ Add this ref to prevent infinite loop
   const initialQALoadedRef = useRef(false);
@@ -84,7 +84,7 @@ const ChatInterface = ({ sessionId, disease, confidence, initialQA = [] }) => {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 30000,
+        timeout: 120000,
         responseType: 'json'
       });
 

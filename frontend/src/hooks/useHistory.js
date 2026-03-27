@@ -47,9 +47,10 @@ export const useHistory = () => {
     }
   }, []);
 
-  const resumeSession = useCallback(async (sessionId) => {
+  const resumeSession = useCallback(async (sessionId, imageId = null) => {
     try {
-      const response = await api.post(`/plant/resume/${sessionId}`);
+      const payload = imageId ? { image_id: imageId } : {};
+      const response = await api.post(`/plant/resume/${sessionId}`, payload);
       return response.data.session;
     } catch (err) {
       toast.error('Failed to resume session');
