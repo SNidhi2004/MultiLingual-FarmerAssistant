@@ -124,7 +124,7 @@
 #         return None
 
 from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 from config import (
     AZURE_BLOB_ACCOUNT,
@@ -153,7 +153,7 @@ def upload_image_to_blob(image_bytes: bytes) -> str:
             blob_name=blob_name,
             account_key=AZURE_BLOB_KEY,
             permission=BlobSasPermissions(read=True),
-            expiry=datetime.utcnow() + timedelta(hours=1)
+            expiry=datetime.now(timezone.utc) + timedelta(hours=1)
         )
         
         return f"https://{AZURE_BLOB_ACCOUNT}.blob.core.windows.net/{AZURE_BLOB_CONTAINER}/{blob_name}?{sas_token}"
@@ -164,7 +164,7 @@ def upload_image_to_blob(image_bytes: bytes) -> str:
 
 def upload_audio_to_blob(audio_bytes: bytes, user_id: str) -> str:
     try:
-        from datetime import datetime
+        from datetime import datetime, timezone
         
         blob_service = BlobServiceClient(
             account_url=f"https://{AZURE_BLOB_ACCOUNT}.blob.core.windows.net",
@@ -173,7 +173,7 @@ def upload_audio_to_blob(audio_bytes: bytes, user_id: str) -> str:
         
         container_client = blob_service.get_container_client(AZURE_BLOB_CONTAINER)
         
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         unique_id = str(uuid.uuid4())[:8]
         blob_name = f"audio/{user_id}_{timestamp}_{unique_id}.wav"
         
@@ -187,7 +187,7 @@ def upload_audio_to_blob(audio_bytes: bytes, user_id: str) -> str:
             blob_name=blob_name,
             account_key=AZURE_BLOB_KEY,
             permission=BlobSasPermissions(read=True),
-            expiry=datetime.utcnow() + timedelta(hours=1)
+            expiry=datetime.now(timezone.utc) + timedelta(hours=1)
         )
         
         return f"https://{AZURE_BLOB_ACCOUNT}.blob.core.windows.net/{AZURE_BLOB_CONTAINER}/{blob_name}?{sas_token}"

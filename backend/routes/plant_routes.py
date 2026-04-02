@@ -291,6 +291,7 @@
     
 #     return jsonify(details), 200
 from flask import Blueprint, request, jsonify, make_response
+from datetime import datetime, timezone
 from utils.jwt_utils import jwt_required, decode_token
 from services.plant_disease import analyze_image
 from services.question_answer import generate_answer
@@ -597,7 +598,7 @@ def generate_session_summary():
                     "text": summary_user,
                     "audio_url": audio_url,
                     "language": user_lang,
-                    "generated_at": datetime.utcnow()
+                    "generated_at": datetime.now(timezone.utc)
                 }
             }}
         )

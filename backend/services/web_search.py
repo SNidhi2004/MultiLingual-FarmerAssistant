@@ -9,17 +9,22 @@ def get_pesticide_brands(disease: str, location: str) -> str:
     
     try:
         results_context = ""
-        with DDGS() as ddgs:
-            # Fetch top 4 text snippets from web search
-            results = ddgs.text(query, max_results=4)
+        # The latest version of DDGS is more robust when used without a context manager in some environments
+        ddgs = DDGS()
+        results = ddgs.text(query, max_results=4)
+        
+        if results:
             for r in results:
                 body = r.get('body', '')
                 if body:
                     results_context += f"- {body}\n"
                     
-        print(f"[SEARCH] DuckDuckGo search successful for: '{query}'")
+            print(f"[SEARCH] DuckDuckGo search successful for: '{query}'")
+        else:
+            print(f"[SEARCH] No results found for: '{query}'")
+            
         return results_context
         
     except Exception as e:
-        print(f"[SEARCH ERROR] Error fetching from DuckDuckGo: {e}")
+        print(f"[SEARCH ERROR] Connection to DuckDuckGo/Bing failed (Expected on some Azure regions): {e}")
         return ""

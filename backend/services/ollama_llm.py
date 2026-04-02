@@ -25,7 +25,7 @@ def query_gemma(prompt: str) -> str:
         response = requests.post(
             f"{OLLAMA_URL}/api/generate",
             json=payload,
-            timeout=60
+            timeout=300
         )
         
         if response.status_code != 200:

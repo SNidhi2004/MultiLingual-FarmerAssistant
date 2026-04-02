@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, make_response
 from database import users_col
 from utils.jwt_utils import generate_token
 import bcrypt
-from datetime import datetime
+from datetime import datetime, timezone
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -40,7 +40,7 @@ def register():
     user = {
         "username": username,
         "password_hash": password_hash,
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     }
 
     result = users_col.insert_one(user)

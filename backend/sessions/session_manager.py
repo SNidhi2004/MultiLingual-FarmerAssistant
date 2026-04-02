@@ -1,5 +1,5 @@
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, timezone
 from database import sessions_col, images_col
 from config import MAX_IMAGES_PER_SESSION, MAX_QA_PER_IMAGE
 from utils.image_utils import generate_thumbnail
@@ -27,7 +27,7 @@ def create_new_session(user_id):
 
     # Create new session with unique session_id string
     session_uuid = str(uuid.uuid4())
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     session = {
         "user_id": ObjectId(user_id),
@@ -58,7 +58,7 @@ def archive_active_session(user_id):
             "$set": {
                 "is_active": False,
                 "is_archived": True,
-                "last_active": datetime.utcnow()
+                "last_active": datetime.now(timezone.utc)
             }
         }
     )
@@ -89,7 +89,7 @@ def resume_session(user_id, session_id, target_image_id=None):
         update_fields = {
             "is_active": True,
             "is_archived": False,
-            "last_active": datetime.utcnow()
+            "last_active": datetime.now(timezone.utc)
         }
 
         if target_image_id:
@@ -151,7 +151,7 @@ def add_image(user_id, image_bytes, disease, confidence):
     image_url = upload_image_to_blob(image_bytes)
     thumbnail = generate_thumbnail(image_bytes)
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     image_doc = {
         "user_id": ObjectId(user_id),
         "session_id": session_db_id,      # MongoDB ObjectId reference
@@ -212,7 +212,7 @@ def switch_image(user_id, image_id):
         {
             "$set": {
                 "current_image_id": image["_id"],
-                "last_active": datetime.utcnow()
+                "last_active": datetime.now(timezone.utc)
             }
         }
     )
@@ -229,7 +229,7 @@ def add_qa(user_id, question_en, answer_en, question_user, answer_user, language
     if not image:
         return False
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     qa_object = {
         "question_en": question_en,
@@ -400,7 +400,7 @@ def reset_session(user_id):
                 "is_active": False,
                 "is_archived": True,
                 "current_image_id": None,
-                "last_active": datetime.utcnow()
+                "last_active": datetime.now(timezone.utc)
             }
         }
     )
