@@ -14,7 +14,7 @@ def create_app():
     # Configure JWT
     app.config['JWT_SECRET_KEY'] = JWT_SECRET
     
-    CORS(app, origins=["http://localhost:5173"], supports_credentials=True)
+    CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
     # Initialize JWT
     jwt = JWTManager(app)
     
