@@ -81,5 +81,47 @@ def login():
 
     return jsonify({
         "message": "Login successful",
-        "token": token
+        "token": token,
+        "location": user.get("location", "")
     }), 200
+
+
+# ------------------------
+# LOCATION PREFERENCES
+# ------------------------
+@auth_bp.route("/location", methods=["GET", "POST", "OPTIONS"])
+def handle_location():
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
+        
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return jsonify({"error": "Authorization header missing"}), 401
+        
+    try:
+        token = auth_header.split(" ")[1]
+        from utils.jwt_utils import decode_token
+        payload = decode_token(token)
+        
+        if not payload:
+            return jsonify({"error": "Invalid or expired token"}), 401
+            
+        from bson import ObjectId
+        user_id = payload.get("user_id")
+        
+        if request.method == "GET":
+            user = users_col.find_one({"_id": ObjectId(user_id)})
+            return jsonify({"location": user.get("location", "") if user else ""}), 200
+            
+        if request.method == "POST":
+            data = request.json
+            new_location = data.get("location", "")
+            users_col.update_one(
+                {"_id": ObjectId(user_id)}, 
+                {"$set": {"location": new_location}}
+            )
+            return jsonify({"message": "Location updated successfully", "location": new_location}), 200
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+

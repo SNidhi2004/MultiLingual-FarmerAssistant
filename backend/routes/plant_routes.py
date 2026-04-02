@@ -397,6 +397,7 @@ def ask():
             question_text = request.form.get("question")
 
         if not user_lang:
+            with open("error_log.txt", "a") as f: f.write("400 Error: Language is required\n")
             return jsonify({"error": "Language is required"}), 400
 
         # Handle audio
@@ -412,9 +413,11 @@ def ask():
                 else:
                     question_en = translate_text(spoken_text, user_lang[:2], "en")
             except Exception as e:
+                with open("error_log.txt", "a") as f: f.write(f"400 Error: Speech recognition failed: {str(e)}\n")
                 return jsonify({"error": f"Speech recognition failed: {str(e)}"}), 400
         else:
             if not question_text:
+                with open("error_log.txt", "a") as f: f.write("400 Error: Question is required (audio not in request.files)\n")
                 return jsonify({"error": "Question is required"}), 400
             question_user = question_text
             try:
@@ -428,13 +431,30 @@ def ask():
         
         last_qa = image.get("qa_history", [])
         print(f"Last QA count: {len(last_qa)}")  
+        
+        # Fetch user's location to provide targeted suggestions
+        from database import users_col
+        user = users_col.find_one({"_id": ObjectId(user_id)})
+        location = user.get("location") if user else None
+
+        # Conditionally search DuckDuckGo if question implies buying/pesticides
+        search_context = ""
+        if location:
+            question_lower = question_en.lower()
+            trigger_words = ["pesticide", "buy", "chemical", "market", "brand", "remedy", "treatment"]
+            if any(word in question_lower for word in trigger_words):
+                from services.web_search import get_pesticide_brands
+                search_context = get_pesticide_brands(image["disease"], location)
+
         # Generate answer
         try:
             answer_en = generate_answer(
                 disease=image["disease"],
                 confidence=image["confidence"],
                 last_qa=image.get("qa_history", []),
-                question=question_en
+                question=question_en,
+                location=location,
+                search_context=search_context
             )
             print(f"Generated answer: {answer_en[:100]}...")  # Debug log
         except Exception as e:
@@ -487,8 +507,113 @@ def ask():
         print(f"Ask error: {str(e)}")
         import traceback
         traceback.print_exc()
+        with open("error_log.txt", "a") as f: f.write(f"500 Error: {str(e)}\n")
         return jsonify({"error": str(e)}), 500
 
+
+# -------------------------------------------------
+# GENERATE SUMMARY
+# -------------------------------------------------
+@plant_bp.route("/summary", methods=["POST", "OPTIONS"])
+def generate_session_summary():
+    # FIX 1: Handle OPTIONS preflight BEFORE any JWT check
+    # The old code had @jwt_required decorator which blocked OPTIONS requests
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
+ 
+    # Manual JWT verification (same pattern as all other routes in this file)
+    try:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            return jsonify({"error": "Authorization header missing"}), 401
+ 
+        token = auth_header.split(" ")[1]
+        payload = decode_token(token)
+ 
+        if not payload:
+            return jsonify({"error": "Invalid or expired token"}), 401
+ 
+        user_id = payload.get("user_id")
+ 
+        image_id = request.json.get("image_id")
+        user_lang = request.json.get("language", "en-IN")
+ 
+        if not image_id:
+            return jsonify({"error": "Missing image_id"}), 400
+ 
+        # FIX 2: Query images_col directly — images are stored as separate
+        # documents in images_col, NOT embedded inside sessions
+        from database import images_col
+        from bson import ObjectId
+ 
+        image = images_col.find_one({
+            "_id": ObjectId(image_id),
+            "user_id": ObjectId(user_id)
+        })
+ 
+        if not image:
+            return jsonify({"error": "Image not found"}), 404
+ 
+        qa_history = image.get("qa_history", [])
+ 
+        if not qa_history:
+            return jsonify({
+                "status": "empty",
+                "summary": "No questions asked yet. Ask a question first!",
+                "audio_url": None
+            }), 200
+ 
+        # Generate summary
+        from services.question_answer import generate_summary
+        summary_en = generate_summary(qa_history, image.get("disease", "Unknown"))
+ 
+        # Translate if needed
+        try:
+            if user_lang[:2].lower() == "en":
+                summary_user = summary_en
+            else:
+                summary_user = translate_text(summary_en, "en", user_lang[:2])
+        except Exception as e:
+            print(f"Summary translation error: {e}")
+            summary_user = summary_en
+ 
+        # Generate audio
+        audio_url = None
+        try:
+            audio_bytes = text_to_speech(summary_user, user_lang)
+            from services.blob_storage import upload_audio_to_blob
+            audio_url = upload_audio_to_blob(audio_bytes, user_id)
+        except Exception as e:
+            print(f"Summary TTS error: {e}")
+ 
+        # FIX 3: Save summary back into images_col on the image document
+        # Old code tried to update sessions_col with embedded images schema
+        # which doesn't match your actual data structure
+        from datetime import datetime
+        images_col.update_one(
+            {"_id": ObjectId(image_id)},
+            {"$set": {
+                "summary": {
+                    "text": summary_user,
+                    "audio_url": audio_url,
+                    "language": user_lang,
+                    "generated_at": datetime.utcnow()
+                }
+            }}
+        )
+ 
+        return jsonify({
+            "status": "success",
+            "summary": summary_user,
+            "audio_url": audio_url
+        }), 200
+ 
+    except Exception as e:
+        print(f"Summary route error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+ 
 
 # -------------------------------------------------
 # GET HISTORY
@@ -681,4 +806,60 @@ def get_image_details(image_id):
         return jsonify(details), 200
         
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# -------------------------------------------------
+# GET SAVED SUMMARY — add this route to plant_routes.py
+# Call this when user opens/resumes an image
+# -------------------------------------------------
+@plant_bp.route("/summary/<image_id>", methods=["GET", "OPTIONS"])
+def get_saved_summary(image_id):
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
+
+    try:
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            return jsonify({"error": "Authorization header missing"}), 401
+
+        token = auth_header.split(" ")[1]
+        payload = decode_token(token)
+        if not payload:
+            return jsonify({"error": "Invalid or expired token"}), 401
+
+        user_id = payload.get("user_id")
+
+        from database import images_col
+        from bson import ObjectId
+
+        image = images_col.find_one(
+            {"_id": ObjectId(image_id), "user_id": ObjectId(user_id)},
+            # Only fetch the summary field — no need to load full QA history
+            {"summary": 1}
+        )
+
+        if not image:
+            return jsonify({"error": "Image not found"}), 404
+
+        saved_summary = image.get("summary")
+
+        if not saved_summary:
+            return jsonify({
+                "has_summary": False,
+                "summary": None,
+                "audio_url": None
+            }), 200
+
+        return jsonify({
+            "has_summary": True,
+            "summary": saved_summary.get("text"),
+            "audio_url": saved_summary.get("audio_url"),
+            "language": saved_summary.get("language"),
+            "generated_at": saved_summary.get("generated_at").isoformat()
+                            if saved_summary.get("generated_at") else None
+        }), 200
+
+    except Exception as e:
+        print(f"Get summary error: {e}")
         return jsonify({"error": str(e)}), 500

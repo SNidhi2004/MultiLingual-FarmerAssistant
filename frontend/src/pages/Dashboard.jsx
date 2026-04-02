@@ -8,6 +8,8 @@ import ImagePreview from '../components/camera/ImagePreview';
 import HistoryGrid from '../components/History/HistoryGrid';
 import ChatInterface from '../components/chat/ChatInterface';
 import LanguageSelector from '../components/common/LanguageSelector';
+import LocationPrompt from '../components/common/LocationPrompt';
+import SummaryPanel from '../components/chat/SummaryPanel';
 import { LogOut, Sprout, ChevronLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ImageUpload from '../components/camera/ImageUpload';
@@ -51,7 +53,10 @@ const Dashboard = () => {
         imageId: response.data.image_id,
         disease: response.data.disease,
         confidence: response.data.confidence,
-        imageUrl: response.data.image_url
+        imageUrl: response.data.image_url,
+        qaHistory: [],
+        summary: null,
+        summaryAudio: null
       });
       setView('chat');
       setShowCamera(false);
@@ -78,7 +83,9 @@ const Dashboard = () => {
         disease: historyItem.disease,
         confidence: historyItem.confidence,
         imageUrl: historyItem.image_url,
-        qaHistory: qaHistory
+        qaHistory: qaHistory,
+        summary: session?.current_image?.summary,
+        summaryAudio: session?.current_image?.summary_audio_url
       });
       setView('history-chat');
     } catch (error) {
@@ -117,7 +124,7 @@ const Dashboard = () => {
     <div className="min-h-screen bg-cream">
       {/* Header */}
       <header className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             {view !== 'main' && (
               <button
@@ -134,6 +141,7 @@ const Dashboard = () => {
           </div>
           <div className="flex items-center space-x-3">
             <LanguageSelector />
+            <LocationPrompt />
             <button
               onClick={logout}
               className="p-2 hover:bg-gray-100 rounded-full transition"
@@ -146,7 +154,7 @@ const Dashboard = () => {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-md mx-auto px-4 py-6">
+      <main className="max-w-5xl mx-auto px-4 py-6">
         <AnimatePresence>
           {view === 'main' && !showUpload && !showCamera && (
             <motion.div
@@ -154,7 +162,7 @@ const Dashboard = () => {
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
-              className="space-y-6"
+              className="max-w-md mx-auto space-y-6"
             >
               {/* New Scan Button */}
               <button
@@ -177,6 +185,7 @@ const Dashboard = () => {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
+              className="max-w-md mx-auto"
             >
               <ImageUpload
                 onCameraSelect={handleCameraOption}
@@ -193,6 +202,7 @@ const Dashboard = () => {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
+              className="max-w-md mx-auto"
             >
               <CameraCapture
                 onCapture={handleCapture}
@@ -210,28 +220,39 @@ const Dashboard = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
-              className="space-y-4"
+              className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr] gap-6 items-start"
             >
-              {capturedImage && (
-                <ImagePreview
-                  image={capturedImage}
+              <div className="flex flex-col space-y-4 h-[75vh]">
+                {capturedImage && (
+                  <ImagePreview
+                    image={capturedImage}
+                    disease={activeSession.disease}
+                    confidence={activeSession.confidence}
+                    loading={loading}
+                    error={error}
+                    onRetry={() => {
+                      setView('main');
+                      setShowUpload(true);
+                    }}
+                  />
+                )}
+                
+                <ChatInterface
+                  sessionId={activeSession.sessionId}
                   disease={activeSession.disease}
                   confidence={activeSession.confidence}
-                  loading={loading}
-                  error={error}
-                  onRetry={() => {
-                    setView('main');
-                    setShowUpload(true);
-                  }}
+                  initialQA={activeSession.qaHistory}
                 />
-              )}
+              </div>
 
-              <ChatInterface
-                sessionId={activeSession.sessionId}
-                disease={activeSession.disease}
-                confidence={activeSession.confidence}
-                initialQA={activeSession.qaHistory}
-              />
+              <div className="h-[60vh] md:h-[75vh]">
+                <SummaryPanel
+                  sessionId={activeSession.sessionId}
+                  imageId={activeSession.imageId}
+                  initialSummary={activeSession.summary}
+                  initialAudioUrl={activeSession.summaryAudio}
+                />
+              </div>
             </motion.div>
           )}
 
@@ -241,13 +262,25 @@ const Dashboard = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 20 }}
+              className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr] gap-6 items-start"
             >
-              <ChatInterface
-                sessionId={activeSession.sessionId}
-                disease={activeSession.disease}
-                confidence={activeSession.confidence}
-                initialQA={activeSession.qaHistory}
-              />
+              <div className="flex flex-col h-[75vh]">
+                <ChatInterface
+                  sessionId={activeSession.sessionId}
+                  disease={activeSession.disease}
+                  confidence={activeSession.confidence}
+                  initialQA={activeSession.qaHistory}
+                />
+              </div>
+              
+              <div className="h-[60vh] md:h-[75vh]">
+                <SummaryPanel
+                  sessionId={activeSession.sessionId}
+                  imageId={activeSession.imageId}
+                  initialSummary={activeSession.summary}
+                  initialAudioUrl={activeSession.summaryAudio}
+                />
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
